@@ -1,0 +1,18 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Casa delle donne Lucha y Siesta",
+        "indirizzo": "Via Lucio Sestio, 10, 00174 Roma RM",
+        "phone": "",
+        "category": "CAV e Casa delle Donne"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [12.5540227, 41.8595571]
+      }
+    }
+  ]
+}

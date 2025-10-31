@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Centri di Mutuo Aiuto</title>
+
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    :root{
+      --primary:#1976d2;
+      --primary-dark:#155fa8;
+      --muted:#f8f9fb;
+      --accent-grad: linear-gradient(135deg,#1976d2 0%, #4aa3ff 100%);
+      --radius:10px;
+    }
+
+    html, body { height:100%; margin:0; font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background: #fcfdff; color:#0b2540; }
+    header { height:72px; display:flex; align-items:center; padding:0 20px; background:var(--muted); box-shadow:0 6px 18px rgba(15,23,42,0.06); gap:12px; }
+    header h3{ margin:0; font-weight:600; letter-spacing:0.2px; color:#07203a; }
+
+    #map { height: calc(100% - 72px); border-top: 1px solid rgba(2,6,23,0.04); }
+    #coords { padding:8px 16px; font-size:0.9rem; color:#556770; background: rgba(255,255,255,0.6); position: absolute; right: 12px; bottom: 12px; border-radius:8px; box-shadow: 0 6px 20px rgba(2,6,23,0.06); backdrop-filter: blur(4px); }
+
+    .btn {
+      -webkit-tap-highlight-color: transparent;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:10px 14px;
+      border-radius:999px;
+      background: var(--accent-grad);
+      color: white;
+      text-decoration:none;
+      font-weight:600;
+      box-shadow: 0 6px 18px rgba(25,118,210,0.18);
+      border: 0;
+      cursor: pointer;
+      transition: transform .14s ease, box-shadow .14s ease;
+      user-select: none;
+    }
+    .btn:active { transform: translateY(1px) scale(.998); }
+    .btn:hover { box-shadow: 0 10px 30px rgba(25,118,210,0.22); transform: translateY(-2px); }
+    .btn:focus { outline: 3px solid rgba(25,118,210,0.18); outline-offset: 3px; border-radius:999px; }
+
+    /* small icon style inside button */
+    .btn .icon { font-size:1.05rem; line-height:1; display:inline-block; transform:translateY(-1px); }
+
+    /* responsive tweaks */
+    @media (max-width:600px){
+      header { padding:0 12px; }
+      .btn { padding:8px 10px; gap:6px; font-size:0.95rem; }
+      #coords { font-size:0.85rem; right:8px; bottom:8px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h3 style="margin:0;">Centri di Mutuo Aiuto</h3>
+    <a class="btn" href="#" id="addBtn"><span class="icon">➕</span><span>Proponi un centro</span></a>
+  </header>
+
+  <div id="map"></div>
+
+  <div id="coords" style="display:none;"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // inizializza la mappa (solo una volta)
+    const map = L.map('map').setView([41.9, 12.5], 6);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // funzione per caricare GeoJSON anche se fetch fallisce in locale
+    async function loadGeoJSON(url) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Errore fetch');
+        return await res.json();
+      } catch (e) {
+        console.warn('Impossibile caricare da fetch, fallback in locale:', e);
+        // fallback: carica via script locale se fetch fallisce
+        return JSON.parse(`{
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "properties": {
+                "name": "Casa delle donne Lucha y Siesta",
+                "indirizzo": "Via Lucio Sestio, 10, 00174 Roma RM",
+                "phone": "",
+                "category": "CAV e Casa delle Donne"
+              },
+              "geometry": {
+                "type": "Point",
+                "coordinates": [12.5540227, 41.8595571]
+              }
+            }
+          ]
+        }`);
+      }
+    }
+
+    loadGeoJSON('data/centri.geojson').then(geojson => {
+      const layer = L.geoJSON(geojson, {
+        onEachFeature: (f, l) => {
+          const p = f.properties || {};
+          const html = `
+            <strong>${p.name || ''}</strong><br>
+            ${p.indirizzo || ''}<br>
+            ${p.phone ? 'Tel: ' + p.phone + '<br>' : ''}
+            <em>${p.category || ''}</em>
+          `;
+          l.bindPopup(html);
+        }
+      });
+      layer.addTo(map);
+      try {
+        map.fitBounds(layer.getBounds());
+      } catch (e) {
+        // se non ci sono bounds (nessuna feature), ignora
+      }
+    });
+
+    // blocco latitudine e longitudine su mappa
+    const coordsEl = document.getElementById('coords');
+    map.on('move', () => {
+      const c = map.getCenter();
+      coordsEl.style.display = 'block';
+      coordsEl.textContent =
+        `Latitudine: ${c.lat.toFixed(5)} | Longitudine: ${c.lng.toFixed(5)}`;
+    });
+
+    // Pulsante per proporre un nuovo centro
+    document.getElementById('addBtn').addEventListener('click', e => {
+      e.preventDefault();
+      const c = map.getCenter();
+
+      const title = encodeURIComponent('Proposta: nuovo centro di mutuo aiuto');
+      const lat = c.lat.toFixed(6);
+      const lng = c.lng.toFixed(6);
+
+      const body = encodeURIComponent(`
+**Nome del centro:** 
+
+**Indirizzo completo:** 
+
+**Numero di telefono (visibile solo agli admin):**
+
+**Categoria:** 
+
+**Descrizione / Attività principali:** 
+
+**Coordinate:**  
+- Latitudine: ${lat}  
+- Longitudine: ${lng}  
+_(usa queste coordinate per localizzare il centro sulla mappa)_
+
+---
+
+_Se non sai come ottenerle, lascia pure i valori precompilati: rappresentano il punto che stai guardando ora al centro della mappa._
+`);
+
+      const issueUrl = `https://github.com/micolsalomone/mutuo-aiuto-mappa/issues/new?title=${title}&body=${body}`;
+      window.open(issueUrl, '_blank');
+    });
+  </script>
+</body>
+</html>
