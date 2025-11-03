@@ -173,41 +173,124 @@ document.addEventListener('DOMContentLoaded', () => {
     selectedMarker.on('popupclose', () => {});
   });
 
-  // Pulsante per proporre un nuovo centro (usa coordinate selezionate se presenti)
-  const addBtn = document.getElementById('addBtn');
-  if (addBtn) {
-    addBtn.addEventListener('click', e => {
-      e.preventDefault();
-      const c = selectedLatLng || map.getCenter();
+  // Replace existing addBtn behavior with modal form flow
+  const reportModal = document.getElementById('reportModal');
+  const reportForm = document.getElementById('reportForm');
+  const reportClose = document.getElementById('reportClose');
+  const reportCancel = document.getElementById('reportCancel');
+  const copyCoordsInForm = document.getElementById('copyCoordsInForm');
 
-      const title = encodeURIComponent('Proposta: nuovo centro di mutuo aiuto');
-      const lat = c.lat.toFixed(6);
-      const lng = c.lng.toFixed(6);
+  function openReportModal(prefill = {}) {
+    if (!reportModal) return;
+    // prefill form fields
+    reportForm.name.value = prefill.name || '';
+    reportForm.address.value = prefill.address || '';
+    reportForm.phone.value = prefill.phone || '';
+    reportForm.category.value = prefill.category || '';
+    reportForm.description.value = prefill.description || '';
 
-      const body = encodeURIComponent(`
-**Nome del centro:** 
+    // coordinates: prefer selectedLatLng, then provided prefill, then map center
+    const coords = (window.__selectedLatLng && window.__selectedLatLng.lat)
+      ? window.__selectedLatLng
+      : (prefill.lat && prefill.lng ? { lat: prefill.lat, lng: prefill.lng } : map.getCenter());
 
-**Indirizzo completo:** 
+    reportForm.lat.value = coords.lat.toFixed(6);
+    reportForm.lng.value = coords.lng.toFixed(6);
 
-**Numero di telefono (visibile solo agli admin):**
+    reportModal.setAttribute('aria-hidden', 'false');
+    // focus first input
+    reportForm.name.focus();
+  }
 
-**Categoria:** 
+  function closeReportModal() {
+    if (!reportModal) return;
+    reportModal.setAttribute('aria-hidden', 'true');
+  }
 
-**Descrizione / Attività principali:** 
-
-**Coordinate:**  
-- Latitudine: ${lat}  
-- Longitudine: ${lng}  
-_(usa queste coordinate per localizzare il centro sulla mappa)_
-
----
-
-_Se non sai come ottenerle, lascia pure i valori precompilati: rappresentano il punto che stai guardando ora al centro della mappa._
-`);
-      const issueUrl = `https://github.com/micolsalomone/mutuo-aiuto-mappa/issues/new?title=${title}&body=${body}`;
-      window.open(issueUrl, '_blank');
+  // wire open modal to the main add button
+  const addBtnEl = document.getElementById('addBtn');
+  if (addBtnEl) {
+    addBtnEl.removeEventListener && addBtnEl.removeEventListener('click', () => {});
+    addBtnEl.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      openReportModal();
     });
   }
+
+  // close handlers
+  if (reportClose) reportClose.addEventListener('click', closeReportModal);
+  if (reportCancel) reportCancel.addEventListener('click', closeReportModal);
+  // click backdrop to close
+  document.querySelectorAll('.modal-backdrop').forEach(b => b.addEventListener('click', closeReportModal));
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeReportModal(); });
+
+  // make global reference for selectedLatLng used by modal prefill
+  // we already update selectedLatLng in the click/drag handlers; expose it
+  window.__selectedLatLng = window.__selectedLatLng || null;
+  // ensure selectedLatLng updates are mirrored
+  const originalMapClick = map._events && map._events.click ? null : null;
+  // (selectedLatLng is updated earlier in this file when clicking map; keep that behavior)
+  // copy coords in form to clipboard
+  if (copyCoordsInForm) {
+    copyCoordsInForm.addEventListener('click', async () => {
+      const text = `${reportForm.lat.value}, ${reportForm.lng.value}`;
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Coordinate copiate negli appunti');
+      } catch {
+        try { prompt('Copia le coordinate', text); } catch {}
+        showToast('Copia non disponibile automaticamente — copia manuale');
+      }
+    });
+  }
+
+  // submit handler: build issue url and open GitHub issue page
+  if (reportForm) {
+    reportForm.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      // basic validation handled by required attributes; double-check
+      const name = reportForm.name.value.trim();
+      const address = reportForm.address.value.trim();
+      const category = reportForm.category.value.trim();
+      const phone = reportForm.phone.value.trim();
+      const description = reportForm.description.value.trim();
+      const lat = reportForm.lat.value.trim();
+      const lng = reportForm.lng.value.trim();
+
+      if (!name || !address || !category || !lat || !lng) {
+        showToast('Compila i campi obbligatori (*)');
+        return;
+      }
+
+      const title = `Nuovo centro: ${name}`;
+      const body = [
+        `**Nome del centro:** ${name}`,
+        `**Indirizzo completo:** ${address}`,
+        phone ? `**Telefono:** ${phone}` : '',
+        `**Categoria:** ${category}`,
+        description ? `**Descrizione:**\n${description}` : '',
+        `**Coordinate:**\n- Latitudine: ${lat}\n- Longitudine: ${lng}`,
+        '',
+        '_Segnalo questo centro tramite la mappa — verrà revisionato dai manutentori prima della pubblicazione._'
+      ].filter(Boolean).join('\n\n');
+
+      const url = `https://github.com/micolsalomone/mutuo-aiuto-mappa/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+      window.open(url, '_blank');
+      showToast('Apro la issue per la segnalazione');
+      closeReportModal();
+    });
+  }
+
+  // Keep window.__selectedLatLng in sync with selectedMarker updates used elsewhere
+  // Hook into the selectedMarker drag/listener in the existing code by setting on map click/drag
+  // If your code defines selectedLatLng variable in outer scope, map click handlers already update it.
+  // Mirror it to window.__selectedLatLng when present:
+  const originalSetSelected = () => {};
+  // simple periodic sync (lightweight): update global ref after interactions
+  setInterval(() => {
+    // if selectedLatLng exists in this file scope, assign to window variable
+    if (typeof selectedLatLng !== 'undefined' && selectedLatLng) window.__selectedLatLng = selectedLatLng;
+  }, 300);
 
   /* --- HOTLINE UI: dati, rendering e comportamenti --- */
   const HOTLINES = [

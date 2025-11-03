@@ -54,6 +54,71 @@
   <!-- toast per notifiche copia -->
   <div id="toast" aria-live="polite"></div>
 
+  <!-- Report modal: form per creare issue -->
+  <div id="reportModal" class="modal" role="dialog" aria-hidden="true" aria-labelledby="reportTitle">
+    <div class="modal-backdrop" data-action="close"></div>
+    <div class="modal-panel" role="document">
+      <header class="modal-header">
+        <h4 id="reportTitle">Segnala nuovo centro</h4>
+        <button id="reportClose" class="btn" aria-label="Chiudi">✕</button>
+      </header>
+
+      <form id="reportForm" class="report-form">
+        <label>
+          Nome del centro *
+          <input name="name" type="text" required />
+        </label>
+
+        <label>
+          Indirizzo completo *
+          <input name="address" type="text" required />
+        </label>
+
+        <label>
+          Telefono
+          <input name="phone" type="text" inputmode="tel" />
+        </label>
+
+        <label>
+          Categoria *
+          <select name="category" required>
+            <option value="">Seleziona...</option>
+            <option>Casa delle donne / CAV</option>
+            <option>Centro sociale / Casa del popolo</option>
+            <option>Sportello immigrazione</option>
+            <option>Servizi sociali</option>
+            <option>Casa famiglia</option>
+            <option>Altro</option>
+          </select>
+        </label>
+
+        <label>
+          Descrizione / attività
+          <textarea name="description" rows="3"></textarea>
+        </label>
+
+        <div class="coords-row">
+          <label>
+            Latitudine
+            <input name="lat" type="text" pattern="-?[0-9.]{3,}" required />
+          </label>
+          <label>
+            Longitudine
+            <input name="lng" type="text" pattern="-?[0-9.]{3,}" required />
+          </label>
+          <button type="button" id="copyCoordsInForm" class="btn">Copia</button>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn--primary">Apri issue</button>
+          <button type="button" id="reportCancel" class="btn">Annulla</button>
+        </div>
+
+        <p class="muted">Le informazioni verranno revisionate prima dell'inserimento sulla mappa.</p>
+      </form>
+    </div>
+  </div>
+
   <!-- Hotlines overlay -->
   <div id="hotlineWrapper" aria-hidden="false">
     <button id="hotlineBtn" class="hotline-btn" aria-expanded="false" aria-controls="hotlinePanel" title="Numeri utili">📞</button>
