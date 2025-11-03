@@ -68,6 +68,87 @@
       pointer-events: none;
       display: none;
     }
+
+    /* --- HOTLINE styles (usa variabili globali) --- */
+    .hotline-btn {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      width: 52px;
+      height: 52px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      background: var(--accent-grad);
+      color: white;
+      border: none;
+      box-shadow: 0 10px 26px rgba(25,118,210,0.18);
+      cursor: pointer;
+      z-index: 10005;
+      font-size: 1.25rem;
+    }
+    .hotline-btn:focus { outline: 3px solid rgba(25,118,210,0.14); outline-offset: 3px; }
+
+    .hotline-panel {
+      position: fixed;
+      left: 12px;
+      bottom: 76px;
+      width: 320px;
+      max-width: calc(100% - 40px);
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 18px 48px rgba(2,6,23,0.16);
+      z-index: 10005;
+      transform-origin: bottom left;
+      transform: translateY(8px) scale(0.995);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform .16s ease, opacity .16s ease;
+    }
+    .hotline-panel.open {
+      transform: none;
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .hotline-header {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:8px;
+    }
+    .hotline-close {
+      background: transparent;
+      border: none;
+      font-size: 1rem;
+      cursor: pointer;
+      color: #6b7684;
+    }
+    .hotline-group { margin: 8px 0; border-top: 1px solid rgba(2,6,23,0.04); padding-top:8px; }
+    .hotline-group-title { font-weight:700; font-size:0.95rem; margin-bottom:6px; color:#07203a; }
+    .hotline-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; }
+    .hotline-info { flex:1; min-width:0; }
+    .hotline-label { font-weight:600; font-size:0.9rem; color:#0b2540; }
+    .hotline-number { font-size:0.85rem; color:#556770; margin-top:2px; }
+    .hotline-actions { display:flex; gap:8px; align-items:center; }
+    .hotline-action-link, .hotline-action-copy {
+      font-size:0.85rem;
+      padding:6px 8px;
+      border-radius:8px;
+      border: 1px solid rgba(2,6,23,0.06);
+      background: #fff;
+      color: var(--primary);
+      cursor:pointer;
+      text-decoration:none;
+    }
+
+    @media (max-width:520px) {
+      .hotline-panel { left: 8px; right: 8px; width: auto; bottom: 72px; }
+      .hotline-btn { left: 8px; bottom: 8px; width:48px; height:48px; }
+    }
   </style>
 </head>
 <body>
@@ -82,6 +163,24 @@
 
   <!-- toast per notifiche copia -->
   <div id="toast" aria-live="polite"></div>
+
+  <!-- Hotlines overlay -->
+  <div id="hotlineWrapper" aria-hidden="false">
+    <button id="hotlineBtn" class="hotline-btn" aria-expanded="false" aria-controls="hotlinePanel" title="Numeri utili">📞</button>
+
+    <aside id="hotlinePanel" class="hotline-panel" role="dialog" aria-hidden="true" aria-label="Numeri utili">
+      <header class="hotline-header">
+        <strong>Numeri utili</strong>
+        <button id="hotlineClose" class="hotline-close" aria-label="Chiudi">✕</button>
+      </header>
+
+      <div class="hotline-list" role="list"></div>
+
+      <footer class="hotline-footer">
+        <button id="hotlineCopyAll" class="btn" type="button">Copia tutti i numeri</button>
+      </footer>
+    </aside>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -309,6 +408,154 @@ _Se non sai come ottenerle, lascia pure i valori precompilati: rappresentano il 
       const issueUrl = `https://github.com/micolsalomone/mutuo-aiuto-mappa/issues/new?title=${title}&body=${body}`;
       window.open(issueUrl, '_blank');
     });
+
+    /* --- HOTLINE UI: dati, rendering e comportamenti --- */
+    const HOTLINES = [
+      {
+        category: 'Assistenza generale',
+        items: [
+          { label: 'Servizi Sociali (Comune)', number: '800123456' },
+          { label: 'Casa famiglia (segnalazione)', number: '800654321' }
+        ]
+      },
+      {
+        category: 'Violenza e minori',
+        items: [
+          { label: 'Telefono Viola (violenza domestica)', number: '1522' },
+          { label: 'Telefono Azzurro (minori)', number: '114' }
+        ]
+      },
+      {
+        category: 'Immigrazione e supporto',
+        items: [
+          { label: 'Sportello immigrazione', number: '800987654' }
+        ]
+      },
+      {
+        category: 'App e servizi digitali',
+        items: [
+          { label: 'YouPol (segnalazioni)', number: 'YouPol (app)' }
+        ]
+      }
+    ];
+
+    const hotlineBtn = document.getElementById('hotlineBtn');
+    const hotlinePanel = document.getElementById('hotlinePanel');
+    const hotlineClose = document.getElementById('hotlineClose');
+    const hotlineList = document.querySelector('.hotline-list');
+    const hotlineCopyAll = document.getElementById('hotlineCopyAll');
+
+    // render list
+    function renderHotlines() {
+      hotlineList.innerHTML = '';
+      HOTLINES.forEach(group => {
+        const g = document.createElement('div');
+        g.className = 'hotline-group';
+        const h = document.createElement('div');
+        h.className = 'hotline-group-title';
+        h.textContent = group.category;
+        g.appendChild(h);
+
+        group.items.forEach(item => {
+          const row = document.createElement('div');
+          row.className = 'hotline-item';
+
+          const info = document.createElement('div');
+          info.className = 'hotline-info';
+          const name = document.createElement('div');
+          name.className = 'hotline-label';
+          name.textContent = item.label;
+          const num = document.createElement('div');
+          num.className = 'hotline-number';
+          num.textContent = item.number;
+          info.appendChild(name);
+          info.appendChild(num);
+
+          const actions = document.createElement('div');
+          actions.className = 'hotline-actions';
+
+          // call link if number looks numeric
+          if (/^[0-9+\s-()]+$/.test(String(item.number))) {
+            const a = document.createElement('a');
+            a.className = 'hotline-action-link';
+            a.href = `tel:${item.number.replace(/\s+/g,'')}`;
+            a.title = `Chiama ${item.number}`;
+            a.textContent = 'Chiama';
+            actions.appendChild(a);
+          }
+
+          const copy = document.createElement('button');
+          copy.className = 'hotline-action-copy btn';
+          copy.type = 'button';
+          copy.dataset.number = item.number;
+          copy.textContent = 'Copia';
+          actions.appendChild(copy);
+
+          row.appendChild(info);
+          row.appendChild(actions);
+          g.appendChild(row);
+        });
+
+        hotlineList.appendChild(g);
+      });
+    }
+
+    // toggle panel
+    function openHotline(open = true) {
+      hotlinePanel.classList.toggle('open', open);
+      hotlinePanel.setAttribute('aria-hidden', (!open).toString());
+      hotlineBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    hotlineBtn.addEventListener('click', () => {
+      const isOpen = hotlinePanel.classList.contains('open');
+      if (!isOpen) { renderHotlines(); }
+      openHotline(!isOpen);
+    });
+
+    hotlineClose.addEventListener('click', () => openHotline(false));
+
+    // click outside to close
+    document.addEventListener('click', (ev) => {
+      if (!hotlinePanel.classList.contains('open')) return;
+      const inside = hotlinePanel.contains(ev.target) || hotlineBtn.contains(ev.target);
+      if (!inside) openHotline(false);
+    }, { capture: true });
+
+    // keyboard: Esc closes
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') openHotline(false);
+    });
+
+    // copy single / copy all handlers
+    document.addEventListener('click', async (ev) => {
+      const btn = ev.target.closest('.hotline-action-copy');
+      if (btn) {
+        const num = btn.dataset.number;
+        try {
+          await navigator.clipboard.writeText(num);
+          showToast(`Numero copiato: ${num}`);
+        } catch {
+          try { prompt('Copia il numero', num); } catch {}
+          showToast('Copia non disponibile automaticamente — copia manuale');
+        }
+      }
+    });
+
+    hotlineCopyAll.addEventListener('click', async () => {
+      // compone una stringa con tutti i numeri
+      const list = HOTLINES.flatMap(g => g.items.map(i => `${g.category} — ${i.label}: ${i.number}`)).join('\n');
+      try {
+        await navigator.clipboard.writeText(list);
+        showToast('Tutti i numeri copiati negli appunti');
+      } catch {
+        try { prompt('Copia i numeri', list); } catch {}
+        showToast('Copia non disponibile automaticamente — copia manuale');
+      }
+    });
+
+    // ensure panel starts hidden
+    openHotline(false);
   </script>
 </body>
 </html>
