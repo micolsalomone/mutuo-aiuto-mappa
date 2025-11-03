@@ -1,0 +1,325 @@
+/* spostato da index.html <style> - Variabili globali e regole UI */
+:root{
+  /* palette e variabili globali (modifica qui per cambiare tutto) */
+  --primary: #6a1b9a;        /* viola primario */
+  --primary-dark: #4a0f6f;
+  --muted: #f8f5fa;          /* sfondo chiaro */
+  --accent-grad: linear-gradient(135deg, #7c3aed 0%, #6a1b9a 100%);
+  --danger: #ff3300;        /* colore per elementi disruptive / error */
+  --radius:10px;
+
+   /* marker styles (personalizzabili) */
+   --marker-size: 48px;               /* diametro testa pin (modificabile) */
+   --marker-height: 64px;             /* altezza totale pin (modificabile) */
+   --marker-stroke: #ffffff;          /* bordo chiaro (se necessario) */
+   --marker-shadow: rgba(2,6,23,0.12);
+  --marker-default: #7c3aed;         /* colore marker esistenti (coordina col tema) */
+  --marker-user: #ff6b6b;            /* colore marker utente */
+}
+
+html, body { height:100%; margin:0; font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background: #fcfdff; color:#0b2540; }
+header { height:72px; display:flex; align-items:center; padding:0 20px; background:var(--muted); box-shadow:0 6px 18px rgba(15,23,42,0.06); gap:12px; justify-content:space-between; }
+.brand {
+  display:flex;
+  gap:12px;
+  align-items:center;
+}
+.logo {
+  width:36px;
+  height:36px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:8px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.03));
+  box-shadow: 0 6px 18px rgba(106,27,154,0.08);
+}
+.logo svg { width:22px; height:22px; display:block; }
+header h3{ margin:0; font-weight:700; letter-spacing:0.2px; color:var(--primary-dark); font-size:1.05rem; display:inline-block; }
+.header-actions { display:flex; gap:12px; align-items:center; }
+
+#map { height: calc(100% - 72px); border-top: 1px solid rgba(2,6,23,0.04); }
+#coords { padding:8px 16px; font-size:0.9rem; color:#556770; background: rgba(255,255,255,0.6); position: absolute; right: 12px; bottom: 12px; border-radius:8px; box-shadow: 0 6px 20px rgba(2,6,23,0.06); backdrop-filter: blur(4px); }
+
+/* marker CSS (usa .custom-marker e varianti) */
+.custom-marker { display:block; line-height:0; }
+.custom-marker svg { display:block; }
+/* modulare: cambia aspetto modificando solo le classi qui o le variabili su :root */
+.custom-marker--default svg .pin-fill { fill: var(--marker-default); }
+.custom-marker--user    svg .pin-fill { fill: var(--marker-user); }
+.custom-marker svg .pin-stroke { fill: var(--marker-stroke); opacity: 0.98; }
+.custom-marker svg .pin-shadow { fill: var(--marker-shadow); opacity: 1; }
+
+/* responsive tweaks */
+@media (max-width:600px){
+  header { padding:0 12px; }
+  .btn { padding:8px 10px; gap:6px; font-size:0.95rem; }
+  #coords { font-size:0.85rem; right:8px; bottom:8px; }
+}
+
+/* toast notifiche */
+#toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 28px;
+  background: rgba(2,6,23,0.92);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 0.93rem;
+  box-shadow: 0 8px 24px rgba(2,6,23,0.18);
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity .18s ease;
+  pointer-events: none;
+  display: none;
+}
+
+/* --- HOTLINE styles (usa variabili globali) --- */
+.hotline-btn {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--accent-grad);
+  color: white;
+  border: none;
+  box-shadow: 0 10px 26px rgba(25,118,210,0.18);
+  cursor: pointer;
+  z-index: 10005;
+  font-size: 1.25rem;
+}
+.hotline-btn:focus { outline: 3px solid rgba(25,118,210,0.14); outline-offset: 3px; }
+
+.hotline-panel {
+  position: fixed;
+  left: 12px;
+  bottom: 76px;
+  width: 320px;
+  max-width: calc(100% - 40px);
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 18px 48px rgba(2,6,23,0.16);
+  z-index: 10005;
+  transform-origin: bottom left;
+  transform: translateY(8px) scale(0.995);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform .16s ease, opacity .16s ease;
+}
+.hotline-panel.open {
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+}
+.hotline-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+.hotline-close {
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  color: #6b7684;
+}
+.hotline-group { margin: 8px 0; border-top: 1px solid rgba(2,6,23,0.04); padding-top:8px; }
+.hotline-group-title { font-weight:700; font-size:0.95rem; margin-bottom:6px; color:#07203a; }
+.hotline-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; }
+.hotline-info { flex:1; min-width:0; }
+.hotline-label { font-weight:600; font-size:0.9rem; color:#0b2540; }
+.hotline-number { font-size:0.85rem; color:#556770; margin-top:2px; }
+.hotline-actions { display:flex; gap:8px; align-items:center; }
+.hotline-action-link, .hotline-action-copy {
+  font-size:0.85rem;
+  padding:6px 8px;
+  border-radius:8px;
+  border: 1px solid rgba(2,6,23,0.06);
+  background: #fff;
+  color: var(--primary);
+  cursor:pointer;
+  text-decoration:none;
+}
+
+@media (max-width:520px) {
+  .hotline-panel { left: 8px; right: 8px; width: auto; bottom: 72px; }
+  .hotline-btn { left: 8px; bottom: 8px; width:48px; height:48px; }
+}
+
+/* Updated header styles */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.logo img {
+  height: 32px;
+  width: auto;
+}
+
+.logo-text {
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+
+/* Navigation */
+.nav-main {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-left: 18px;
+}
+
+.nav-link {
+  text-decoration: none;
+  color: #4A5568;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 6px 0;
+  position: relative;
+  border-radius: 6px;
+}
+
+.nav-link:hover {
+  color: var(--primary);
+  background: rgba(124,58,237,0.06);
+  padding: 6px 8px;
+}
+
+.nav-link.active {
+  color: var(--primary);
+}
+
+.nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 8px;
+  right: 8px;
+  height: 3px;
+  background: var(--primary);
+  border-radius: 2px;
+}
+
+/* Button system */
+.btn {
+  -webkit-tap-highlight-color: transparent;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  border-radius:999px;
+  background: transparent;
+  color: var(--primary);
+  text-decoration:none;
+  font-weight:600;
+  box-shadow: none;
+  border: 1px solid rgba(2,6,23,0.06);
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
+  user-select: none;
+  font-size: 0.95rem;
+}
+
+.btn:hover { transform: translateY(-2px); }
+
+.btn--primary {
+  background: var(--accent-grad);
+  color: #fff;
+  border: 0;
+  box-shadow: 0 8px 26px rgba(106,27,154,0.12);
+  padding:10px 16px;
+  font-weight:700;
+}
+
+.btn--primary:focus { outline: 3px solid rgba(124,58,237,0.14); outline-offset: 3px; }
+
+/* --- Popup card styles (più grandi, con icona e bordo distintivo) --- */
+/* Colore bordo e accent usano le variabili globali per poterle cambiare facilmente */
+.leaflet-popup.popup--feature .leaflet-popup-content-wrapper,
+.leaflet-popup.popup--selected .leaflet-popup-content-wrapper {
+  padding: 14px;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(2,6,23,0.14);
+  border: 1px solid rgba(2,6,23,0.06);
+  background: linear-gradient(180deg, #fff, #fbfbfd);
+  max-width: 360px;
+}
+
+/* linea colorata sul bordo sinistro per distinguere i tipi */
+.leaflet-popup.popup--feature .leaflet-popup-content-wrapper {
+  border-left: 6px solid var(--marker-default);
+}
+.leaflet-popup.popup--selected .leaflet-popup-content-wrapper {
+  border-left: 6px solid var(--marker-user);
+}
+
+/* rende il contenuto più leggibile e spazioso */
+.leaflet-popup .leaflet-popup-content {
+  margin: 0;
+  color: #07203a;
+  font-size: 0.96rem;
+  line-height: 1.3;
+}
+
+/* header popup con icona */
+.popup-card {
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+}
+.popup-icon {
+  flex: 0 0 44px;
+  width:44px;
+  height:44px;
+  border-radius:10px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:18px;
+  color:#fff;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.08);
+}
+/* icona per feature (usa marker-default) */
+.leaflet-popup.popup--feature .popup-icon {
+  background: var(--marker-default);
+}
+/* icona per selezione utente (usa marker-user) */
+.leaflet-popup.popup--selected .popup-icon {
+  background: var(--marker-user);
+}
+
+.popup-body { flex:1; min-width:0; }
+.popup-title { font-weight:700; margin-bottom:6px; color: #07203a; }
+.popup-sub { font-size:0.88rem; color:#536776; margin-bottom:6px; }
+.popup-meta { font-size:0.85rem; color:#556770; margin-top:6px; }
+
+/* azioni nella parte bassa del popup */
+.popup-actions { display:flex; gap:8px; margin-top:10px; }
+.popup-actions .btn { padding:8px 10px; font-size:0.9rem; }
+
+/* mobile tweaks */
+@media (max-width:540px){
+  .leaflet-popup.popup--feature .leaflet-popup-content-wrapper,
+  .leaflet-popup.popup--selected .leaflet-popup-content-wrapper {
+    max-width: calc(100vw - 32px);
+    padding: 12px;
+  }
+  .popup-icon { width:38px; height:38px; font-size:16px; }
+}
