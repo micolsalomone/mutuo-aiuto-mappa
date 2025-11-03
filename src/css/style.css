@@ -493,9 +493,10 @@ header {
 }
 
 /* Ensure map controls (zoom) sit above the sidebar and are inset from edges */
-.leaflet-bottom.leaflet-right {
+/* moved to top-right */
+.leaflet-top.leaflet-right {
+  top: 12px;      /* distanza dal bordo superiore della mappa */
   right: 12px;    /* distanza dal bordo destro della mappa */
-  bottom: 12px;   /* distanza dal bordo inferiore della mappa */
   z-index: 10007; /* sopra la sidebar (sidebar = 10004) e sopra other overlays */
   pointer-events: auto;
 }
@@ -508,13 +509,62 @@ header {
   background: rgba(255,255,255,0.96);
 }
 
-/* piccoli aggiustamenti per mobile */
-@media (max-width:900px) {
-  .leaflet-bottom.leaflet-right { right: 8px; bottom: 8px; }
+/* Locate control smaller / matching zoom style */
+.leaflet-control-locate {
+  margin-left: 8px; /* piccolo gap rispetto al gruppo zoom */
+  display: inline-flex;
+}
+.leaflet-control-locate .leaflet-control-locate-btn {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:36px;
+  height:36px;
+  font-size:16px;
+  text-decoration:none;
+  color: var(--primary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.leaflet-control-locate .leaflet-control-locate-btn:hover {
+  background: rgba(124,58,237,0.06);
+  border-radius:8px;
 }
 
-/* small screens: restore full-width map */
+/* USER LOCATION marker (cerchietto pulsante) */
+.user-location-marker { line-height:0; }
+.user-location { position: relative; width:20px; height:20px; display:inline-block; }
+.user-location .dot {
+  position:absolute;
+  left:50%; top:50%;
+  transform:translate(-50%,-50%);
+  width:10px; height:10px;
+  border-radius:50%;
+  background: var(--marker-user);
+  box-shadow: 0 6px 18px rgba(255,107,107,0.18);
+  border: 2px solid #fff;
+}
+.user-location .pulse {
+  position:absolute;
+  left:50%; top:50%;
+  transform:translate(-50%,-50%);
+  width:20px; height:20px;
+  border-radius:50%;
+  background: var(--marker-user);
+  opacity: 0.18;
+  animation: pulse 1.6s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes pulse {
+  0% { transform: translate(-50%,-50%) scale(0.8); opacity: 0.22; }
+  50% { transform: translate(-50%,-50%) scale(1.3); opacity: 0.08; }
+  100% { transform: translate(-50%,-50%) scale(1.8); opacity: 0; }
+}
+
+/* ensure control layout on small screens */
 @media (max-width:900px) {
-  .sidebar { display:none; }
-  #map { left: 0; top:72px; }
+  .leaflet-top.leaflet-right { top: 8px; right: 8px; }
+  .leaflet-control-locate .leaflet-control-locate-btn { width:34px; height:34px; font-size:15px; }
 }

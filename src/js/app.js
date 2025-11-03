@@ -8,8 +8,29 @@ document.addEventListener('DOMContentLoaded', () => {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
 
-  // aggiungi controllo zoom in basso a destra (overlay)
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  // aggiungi controllo zoom in alto a destra (overlay)
+  L.control.zoom({ position: 'topright' }).addTo(map);
+
+  // reinserisco controllo "localizza" compatto vicino allo zoom (se mancante)
+  const LocateControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd: function () {
+      const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-locate');
+      const btn = L.DomUtil.create('a', 'leaflet-control-locate-btn', container);
+      btn.href = '#';
+      btn.title = 'Mostra la mia posizione / Attiva tracciamento';
+      btn.textContent = '📍';
+      btn.setAttribute('aria-label', 'Mostra la mia posizione');
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.on(btn, 'click', L.DomEvent.stop).on(btn, 'click', (ev) => {
+        ev.preventDefault();
+        toggleUserTracking();
+      });
+      return container;
+    }
+  });
+  // evita doppia aggiunta se già presente
+  try { map.addControl(new LocateControl()); } catch(e) { /* ignore if exists */ }
 
   // ensure Leaflet recalculates size after layout settles (sidebar present)
   setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 200);
@@ -889,5 +910,137 @@ document.addEventListener('DOMContentLoaded', () => {
       // mostra toast di conferma
       showToast(`Aggiunti ${validItems.length} centri alla mappa`);
     });
+  }
+
+  // --- User location: geolocate, show marker, optional watch/tracking ---
+  let userLocationMarker = null;
+  let userLocationWatchId = null;
+  let userLocationFollowing = false;
+
+  // evita recentering continuo: centriamo automaticamente solo alla prima posizione
+  let userLocationAutoCenter = true;
+  // se l'utente ha interagito (drag/zoom/click) non forziamo più il recentro
+  let userInteracted = false;
+
+  // segnala interazione utente sulla mappa per bloccare auto-centering
+  map.on('movestart', () => { userInteracted = true; });
+  map.on('dragstart', () => { userInteracted = true; });
+  map.on('zoomstart', () => { userInteracted = true; });
+  map.on('popupopen', () => { userInteracted = true; });
+
+  function showUserLocation(position, { center = true, openPopup = false } = {}) {
+    const lat = position.coords.latitude;
+    const lng = position.coords.longitude;
+
+    // rimuovi precedente
+    if (userLocationMarker) {
+      try { map.removeLayer(userLocationMarker); } catch (e) {}
+    }
+
+    // user location: usa un divIcon cerchietto pulsante distinto dai pin mappa
+    const iconHtml = `
+      <div class="user-location">
+        <span class="pulse" aria-hidden="true"></span>
+        <span class="dot" aria-hidden="true"></span>
+      </div>
+    `;
+    const userIcon = L.divIcon({
+      className: 'user-location-marker',
+      html: iconHtml,
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+      popupAnchor: [0, -14]
+    });
+    userLocationMarker = L.marker([lat, lng], { icon: userIcon, interactive: true }).addTo(map);
+    const popupHtml = `
+      <div class="popup-card">
+        <div class="popup-icon" aria-hidden="true">🧭</div>
+        <div class="popup-body">
+          <div class="popup-title">La tua posizione</div>
+          <div class="popup-sub">Lat: ${lat.toFixed(6)} · Lng: ${lng.toFixed(6)}</div>
+        </div>
+      </div>
+    `;
+    userLocationMarker.bindPopup(popupHtml, { className: 'popup--selected', maxWidth: 300 });
+    if (openPopup) userLocationMarker.openPopup();
+
+    // centra la mappa solo se richiesto:
+    // - centro iniziale (userLocationAutoCenter && !userInteracted) oppure
+    // - quando la modalità 'follow' è attiva (userLocationFollowing)
+    if (center) {
+      if ((userLocationAutoCenter && !userInteracted) || userLocationFollowing) {
+        map.setView([lat, lng], Math.max(map.getZoom(), 14));
+      }
+    }
+
+    // dopo il primo posizionamento automatico, disabilita ulteriori recentri automatici
+    userLocationAutoCenter = false;
+  }
+
+  function locateUserOnce() {
+    if (!navigator.geolocation) {
+      showToast('Geolocalizzazione non supportata dal browser');
+      return;
+    }
+    showToast('Richiedo la posizione…');
+    navigator.geolocation.getCurrentPosition(pos => {
+      showUserLocation(pos, { center: true, openPopup: true });
+    }, err => {
+      showToast('Impossibile ottenere posizione: ' + (err.message || 'permesso negato'));
+    }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 });
+  }
+
+  function startWatchUser() {
+    if (!navigator.geolocation) {
+      showToast('Geolocalizzazione non supportata dal browser');
+      return;
+    }
+    if (userLocationWatchId) return;
+    // start watch but do NOT force continuous recentering here
+    userLocationWatchId = navigator.geolocation.watchPosition(pos => {
+      // only center on updates when follow mode is active
+      showUserLocation(pos, { center: userLocationFollowing, openPopup: false });
+    }, err => {
+      console.warn('watchPosition error', err);
+    }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+    showToast('Tracciamento posizione attivato');
+  }
+
+  function stopWatchUser() {
+    if (userLocationWatchId != null) {
+      navigator.geolocation.clearWatch(userLocationWatchId);
+      userLocationWatchId = null;
+    }
+    userLocationFollowing = false;
+    showToast('Tracciamento posizione disattivato');
+  }
+
+  // toggle follow state (click cycle):
+  // 1) no watch -> request position, add watch (no follow, no continuous recenter)
+  // 2) watch active, not following -> enable follow (center now and on subsequent updates)
+  // 3) watch active and following -> stop watch
+  function toggleUserTracking() {
+    if (!userLocationWatchId) {
+      // first click: get position, start watch (but don't follow)
+      userLocationAutoCenter = true; // allow initial centering once
+      navigator.geolocation.getCurrentPosition(pos => {
+        showUserLocation(pos, { center: true, openPopup: true });
+        startWatchUser(); // watch updates will NOT center unless follow enabled
+        userLocationFollowing = false;
+        showToast('Tracciamento attivato (clicca di nuovo per seguire la posizione)');
+      }, err => {
+        showToast('Impossibile ottenere posizione: ' + (err.message || 'permesso negato'));
+      }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 });
+    } else if (!userLocationFollowing) {
+      // second click: enable follow (center now and on following updates)
+      userLocationFollowing = true;
+      if (userLocationMarker) {
+        map.setView(userLocationMarker.getLatLng(), Math.max(map.getZoom(), 14));
+      }
+      showToast('Follow posizione attivato');
+    } else {
+      // third click: stop everything
+      stopWatchUser();
+    }
   }
 });
