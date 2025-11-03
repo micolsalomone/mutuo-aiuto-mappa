@@ -15,37 +15,86 @@
 <body>
   <header>
     <div class="brand">
-      <div class="logo" aria-hidden="true">
-        <!-- semplice logo inline: "B" stilizzata; sostituisci con SVG/file reale se preferisci -->
-        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Logo Banco">
-          <rect width="24" height="24" rx="6" fill="url(#g)"/>
+      <a class="logo" href="#" aria-label="Banco — Home">
+        <!-- logo inline: sostituisci con assets/logo.svg se preferisci -->
+        <svg viewBox="0 0 24 24" width="28" height="28" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">
           <defs>
             <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
               <stop offset="0" stop-color="#9b5cff"/>
               <stop offset="1" stop-color="#6a1b9a"/>
             </linearGradient>
           </defs>
+          <rect width="24" height="24" rx="6" fill="url(#g)"/>
           <path d="M7 16V8h5a3 3 0 0 1 0 6H7z" fill="#fff"/>
         </svg>
-      </div>
+      </a>
 
       <div>
         <h3 style="margin:0;">Banco</h3>
       </div>
-
-      <!-- navigation links (left) -->
-      <nav class="nav-main" aria-label="Main navigation">
-        <a class="nav-link active" href="#">Mappa</a>
-        <a class="nav-link" href="#">Chi siamo</a>
-        <a class="nav-link" href="CONTRIBUTING.md">Contribuisci</a>
-      </nav>
     </div>
+
+    <!-- sposto la nav qui per poterla allineare a destra -->
+    <nav class="nav-main" aria-label="Main navigation">
+      <a class="nav-link active" href="#">Mappa</a>
+      <a class="nav-link" href="#">Chi siamo</a>
+      <a class="nav-link" href="CONTRIBUTING.md">Contribuisci</a>
+    </nav>
 
     <div class="header-actions">
-      <!-- pulsante più visibile e viola -->
-      <a class="btn btn--primary" href="#" id="addBtn"><span class="icon" aria-hidden="true">➕</span><span>Proponi un centro</span></a>
+      <a class="btn btn--primary" href="#" id="addBtn" title="Proponi un centro">➕ Proponi un centro</a>
+      <button id="bulkBtn" class="btn" title="Importa più centri">📥 Importa</button>
+      <button id="helpBtn" class="btn" title="Aiuto">❔</button>
     </div>
   </header>
+
+  <!-- Helper panel (toggleable) -->
+  <div id="helperPanel" class="helper-panel" aria-hidden="true" role="region" aria-label="Aiuto rapido">
+    <div class="helper-inner">
+      <div class="helper-header">
+        <strong>Aiuto rapido</strong>
+        <button id="helperClose" class="btn" aria-label="Chiudi">✕</button>
+      </div>
+      <div class="helper-body">
+        <p><strong>Segnala un centro:</strong> clicca sulla mappa per selezionare la posizione (o usa il centro mappa), trascina il marker per affinare le coordinate, poi premi "Proponi un centro" per aprire il form.</p>
+        <p><strong>Import multiplo:</strong> usa "Importa" e incolla righe nel formato consigliato:<br>
+        <code>Nome; Indirizzo; Telefono; Categoria; Lat; Lng; Descrizione (opzionale)</code></p>
+        <p><strong>Copia coordinate:</strong> puoi copiare lat,lng dalle popup o dal form con il pulsante "Copia".</p>
+        <p class="muted">I dati inviati verranno revisionati manualmente prima dell'inserimento sulla mappa.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk import modal: incolla lista/CSV/TSV -->
+  <div id="bulkModal" class="modal" role="dialog" aria-hidden="true" aria-labelledby="bulkTitle">
+    <div class="modal-backdrop" data-action="close"></div>
+    <div class="modal-panel" role="document">
+      <header class="modal-header">
+        <h4 id="bulkTitle">Import multiplo — incolla qui la lista</h4>
+        <button id="bulkClose" class="btn" aria-label="Chiudi">✕</button>
+      </header>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <p class="muted">Formato consigliato per riga (separatore ;):<br>
+          Nome; Indirizzo; Telefono; Categoria; Lat; Lng; Descrizione (opzionale)</p>
+
+        <textarea id="bulkInput" rows="8" style="width:100%;padding:10px;border-radius:8px;border:1px solid rgba(2,6,23,0.08)"></textarea>
+
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="bulkParse" class="btn">Anteprima</button>
+          <button id="bulkClear" class="btn">Pulisci</button>
+          <div id="bulkCount" style="margin-left:auto;color:#556770;font-size:0.95rem"></div>
+        </div>
+
+        <div id="bulkPreview" style="max-height:240px;overflow:auto;border-radius:8px;padding:8px;border:1px dashed rgba(2,6,23,0.06);background:#fff"></div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button id="bulkSubmit" class="btn btn--primary">Crea issue con tutte le segnalazioni</button>
+          <button id="bulkCancel" class="btn">Annulla</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="map"></div>
 

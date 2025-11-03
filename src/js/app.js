@@ -436,4 +436,196 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ensure panel starts hidden
   openHotline(false);
+
+  /* --- Helper panel (UI helper text) --- */
+  const helpBtn = document.getElementById('helpBtn');
+  const helperPanel = document.getElementById('helperPanel');
+  const helperClose = document.getElementById('helperClose');
+
+  function openHelper(open = true) {
+    if (!helperPanel) return;
+    helperPanel.setAttribute('aria-hidden', (!open).toString());
+    // aria-hidden expects "false" when visible
+    helperPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (open) helperPanel.querySelector('.helper-body')?.focus();
+  }
+
+  if (helpBtn) {
+    helpBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const isOpen = helperPanel && helperPanel.getAttribute('aria-hidden') === 'false';
+      openHelper(!isOpen);
+    });
+  }
+  if (helperClose) helperClose.addEventListener('click', () => openHelper(false));
+
+  // close helper on outside click / Esc
+  document.addEventListener('click', (ev) => {
+    if (!helperPanel || helperPanel.getAttribute('aria-hidden') === 'true') return;
+    const inside = helperPanel.contains(ev.target) || (helpBtn && helpBtn.contains(ev.target));
+    if (!inside) openHelper(false);
+  }, { capture: true });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') openHelper(false); });
+
+  // ---- Bulk import handlers ----
+  const bulkBtn = document.getElementById('bulkBtn');
+  const bulkModal = document.getElementById('bulkModal');
+  const bulkClose = document.getElementById('bulkClose');
+  const bulkCancel = document.getElementById('bulkCancel');
+  const bulkInput = document.getElementById('bulkInput');
+  const bulkParse = document.getElementById('bulkParse');
+  const bulkClear = document.getElementById('bulkClear');
+  const bulkPreview = document.getElementById('bulkPreview');
+  const bulkCount = document.getElementById('bulkCount');
+  const bulkSubmit = document.getElementById('bulkSubmit');
+
+  function openBulk(open = true) {
+    if (!bulkModal) return;
+    bulkModal.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (open) bulkInput.focus();
+  }
+
+  if (bulkBtn) bulkBtn.addEventListener('click', (e) => { e.preventDefault(); openBulk(true); });
+
+  if (bulkClose) bulkClose.addEventListener('click', () => openBulk(false));
+  if (bulkCancel) bulkCancel.addEventListener('click', () => openBulk(false));
+  document.querySelectorAll('.modal-backdrop').forEach(b => b.addEventListener('click', () => openBulk(false)));
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') openBulk(false); });
+
+  // parse helper: accepts raw pasted text and returns array of objects
+  function parseBulkText(text) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const parsed = lines.map((line, idx) => {
+      // prefer semicolon, then tab, then comma
+      let parts;
+      if (line.includes(';')) parts = line.split(';').map(p => p.trim());
+      else if (line.includes('\t')) parts = line.split('\t').map(p => p.trim());
+      else if (line.split(',').length >= 6) parts = line.split(',').map(p => p.trim());
+      else {
+        // fallback: try splitting by ' | ' or ' - '
+        if (line.includes(' | ')) parts = line.split(' | ').map(p => p.trim());
+        else parts = [line];
+      }
+
+      // map fields: name;address;phone;category;lat;lng;description(optional)
+      const [name, address, phone, category, lat, lng, ...rest] = parts;
+      const description = rest.length ? rest.join(' ; ') : '';
+      const coordsValid = lat && lng && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng));
+      return {
+        raw: line,
+        idx,
+        name: name || '',
+        address: address || '',
+        phone: phone || '',
+        category: category || '',
+        lat: coordsValid ? parseFloat(lat) : null,
+        lng: coordsValid ? parseFloat(lng) : null,
+        description: description || '',
+        valid: Boolean(name && address && category && (coordsValid || true)) // coords optional but encouraged
+      };
+    });
+    return parsed;
+  }
+
+  function renderBulkPreview(list) {
+    if (!bulkPreview) return;
+    bulkPreview.innerHTML = '';
+    list.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'bulk-row';
+      const left = document.createElement('div');
+      left.style.flex = '1';
+      const title = document.createElement('div');
+      title.className = 'bulk-title';
+      title.textContent = item.name || `Riga ${i+1}`;
+
+      const sub = document.createElement('div');
+      sub.className = 'bulk-sub';
+      const parts = [];
+      if (item.address) parts.push(item.address);
+      if (item.phone) parts.push(`Tel: ${item.phone}`);
+      if (item.category) parts.push(item.category);
+      if (item.lat !== null && item.lng !== null) parts.push(`(${item.lat.toFixed(6)}, ${item.lng.toFixed(6)})`);
+      sub.textContent = parts.join(' · ');
+
+      left.appendChild(title);
+      left.appendChild(sub);
+
+      const right = document.createElement('div');
+      right.style.flex = '0 0 120px';
+      right.style.textAlign = 'right';
+      if (!item.valid) {
+        const bad = document.createElement('div');
+        bad.className = 'bulk-bad';
+        bad.textContent = 'Formato incerto';
+        right.appendChild(bad);
+      } else {
+        const ok = document.createElement('div');
+        ok.style.color = '#2f855a';
+        ok.style.fontWeight = '700';
+        ok.textContent = 'OK';
+        right.appendChild(ok);
+      }
+
+      row.appendChild(left);
+      row.appendChild(right);
+      bulkPreview.appendChild(row);
+    });
+    bulkCount.textContent = `${list.length} righe`;
+  }
+
+  let parsedBulk = [];
+
+  if (bulkParse) bulkParse.addEventListener('click', () => {
+    const text = bulkInput.value || '';
+    parsedBulk = parseBulkText(text);
+    renderBulkPreview(parsedBulk);
+  });
+
+  if (bulkClear) bulkClear.addEventListener('click', () => {
+    bulkInput.value = '';
+    parsedBulk = [];
+    bulkPreview.innerHTML = '';
+    bulkCount.textContent = '';
+  });
+
+  if (bulkSubmit) bulkSubmit.addEventListener('click', () => {
+    if (!parsedBulk || parsedBulk.length === 0) {
+      showToast('Nessuna riga da importare. Usa Anteprima prima di inviare.');
+      return;
+    }
+
+    // Build single issue body with all entries (maintainer-friendly)
+    const entriesText = parsedBulk.map((it, i) => {
+      const lines = [
+        `### ${i+1}. ${it.name || '(senza nome)'}`,
+        it.address ? `**Indirizzo:** ${it.address}` : '',
+        it.phone ? `**Telefono:** ${it.phone}` : '',
+        it.category ? `**Categoria:** ${it.category}` : '',
+        (it.lat !== null && it.lng !== null) ? `**Coordinate:** ${it.lat.toFixed(6)}, ${it.lng.toFixed(6)}` : '',
+        it.description ? `**Descrizione:**\n${it.description}` : ''
+      ].filter(Boolean).join('\n\n');
+      return lines;
+    }).join('\n\n---\n\n');
+
+    const title = `Import multiplo: ${parsedBulk.length} centri`;
+    const body = [
+      `Segnalo in blocco ${parsedBulk.length} centri importati dall'utente.`,
+      '',
+      'Per favore revisionare e aggiungere singolarmente i punti sulla mappa.',
+      '',
+      'Dettagli:',
+      '',
+      entriesText,
+      '',
+      '_Generato tramite Bulk import nella mappa._'
+    ].join('\n');
+
+    const url = `https://github.com/micolsalomone/mutuo-aiuto-mappa/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+    window.open(url, '_blank');
+    showToast('Apro la issue con le segnalazioni');
+    openBulk(false);
+  });
+
+  // ---- end bulk import handlers ----
 });
