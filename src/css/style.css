@@ -441,3 +441,80 @@ header {
 #bulkPreview .bulk-sub { font-size:0.88rem; color:#556770; }
 #bulkPreview .bulk-bad { color: var(--danger); font-weight:700; }
 #bulkCount { font-weight:600; }
+/* Sidebar categorie (left) */
+.sidebar {
+  position: absolute;
+  top: 72px;           /* subito sotto la topbar */
+  left: 0;
+  bottom: 0;
+  width: 260px;
+  padding: 14px;
+  background: rgba(255,255,255,0.98);
+  border-right: 1px solid rgba(2,6,23,0.04);
+  box-shadow: 8px 0 30px rgba(2,6,23,0.04);
+  z-index: 10004;
+  overflow: auto;
+}
+
+.sidebar-header { font-weight:700; margin-bottom:8px; color:var(--primary-dark); }
+.sidebar-controls { display:flex; gap:8px; margin-bottom:10px; }
+.category-list { display:flex; flex-direction:column; gap:8px; }
+
+/* singola riga categoria */
+.category-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px; border-radius:8px; }
+.category-row label { display:flex; align-items:center; gap:10px; cursor:pointer; width:100%; }
+.category-name { font-weight:600; color:#07203a; }
+.category-count { color:#556770; font-size:0.9rem; margin-left:auto; }
+
+/* Quando checkbox non selezionata rendi la riga più tenue */
+.category-row input[type="checkbox"] { width:16px; height:16px; }
+.category-row.inactive { opacity:0.5; }
+
+/* Adatta la mappa per fare spazio alla sidebar */
+#map {
+  position: absolute;
+  top: 72px;          /* sotto la topbar */
+  left: 260px;        /* lascia spazio alla sidebar */
+  right: 0;
+  bottom: 0;
+  z-index: 1;         /* sotto sidebar/overlay */
+  /* rimuovi altezza calc precedente che può confliggere */
+  height: auto;
+}
+
+/* sidebar above map */
+.sidebar {
+  z-index: 10004;
+}
+
+/* ensure top overlays (toast, hotline, helper) stay above map */
+#toast, .hotline-btn, .helper-panel {
+  z-index: 10005;
+}
+
+/* Ensure map controls (zoom) sit above the sidebar and are inset from edges */
+.leaflet-bottom.leaflet-right {
+  right: 12px;    /* distanza dal bordo destro della mappa */
+  bottom: 12px;   /* distanza dal bordo inferiore della mappa */
+  z-index: 10007; /* sopra la sidebar (sidebar = 10004) e sopra other overlays */
+  pointer-events: auto;
+}
+
+/* stile visivo per il gruppo zoom per maggiore contrasto su mappa */
+.leaflet-control-zoom.leaflet-bar {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(2,6,23,0.12);
+  background: rgba(255,255,255,0.96);
+}
+
+/* piccoli aggiustamenti per mobile */
+@media (max-width:900px) {
+  .leaflet-bottom.leaflet-right { right: 8px; bottom: 8px; }
+}
+
+/* small screens: restore full-width map */
+@media (max-width:900px) {
+  .sidebar { display:none; }
+  #map { left: 0; top:72px; }
+}

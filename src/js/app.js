@@ -1,12 +1,18 @@
 // spostato da index.html <script> e reso DOM-safe
 document.addEventListener('DOMContentLoaded', () => {
-  // inizializza la mappa (solo una volta)
-  const map = L.map('map').setView([41.9, 12.5], 6);
+  // inizializza la mappa (solo una volta) — disabilita il controllo zoom di default
+  const map = L.map('map', { zoomControl: false }).setView([41.9, 12.5], 6);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
+
+  // aggiungi controllo zoom in basso a destra (overlay)
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  // ensure Leaflet recalculates size after layout settles (sidebar present)
+  setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 200);
 
   // funzione toast globale (ora visibile a tutti i listener)
   function showToast(msg, ms = 1400) {
@@ -87,29 +93,112 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Caricamento GeoJSON -> creazione markers raggruppati per categoria
   loadGeoJSON('data/centri.geojson').then(geojson => {
-    const layer = L.geoJSON(geojson, {
-      pointToLayer: (feature, latlng) => {
-        return createMarker(latlng, 'default');
-      },
-      onEachFeature: (f, l) => {
-        const p = f.properties || {};
-        const html = `
-          <div class="popup-card">
-            <div class="popup-icon" aria-hidden="true">📍</div>
-            <div class="popup-body">
-              <div class="popup-title">${p.name || 'Centro'}</div>
-              <div class="popup-sub">${p.indirizzo || ''}</div>
-              ${p.phone ? `<div class="popup-meta">Tel: ${p.phone}</div>` : ''}
-              <div class="popup-meta">${p.category || ''}</div>
-            </div>
-          </div>
-        `;
-        l.bindPopup(html, { className: 'popup--feature', maxWidth: 360 });
+    const categories = {};            // name => L.LayerGroup
+    const allMarkers = [];            // lista di tutti i marker per bounds
+
+    (geojson.features || []).forEach(f => {
+      const p = f.properties || {};
+      const coords = (f.geometry && f.geometry.coordinates) || [];
+      if (!coords || coords.length < 2) return;
+
+      const latlng = L.latLng(coords[1], coords[0]);
+      const cat = (p.category || 'Altro').trim() || 'Altro';
+
+      if (!categories[cat]) {
+        categories[cat] = L.layerGroup();
       }
+
+      const marker = createMarker(latlng, 'default');
+      const html = `
+        <div class="popup-card">
+          <div class="popup-icon" aria-hidden="true">📍</div>
+          <div class="popup-body">
+            <div class="popup-title">${p.name || 'Centro'}</div>
+            <div class="popup-sub">${p.indirizzo || ''}</div>
+            ${p.phone ? `<div class="popup-meta">Tel: ${p.phone}</div>` : ''}
+            <div class="popup-meta">${p.category || ''}</div>
+          </div>
+        </div>
+      `;
+      marker.bindPopup(html, { className: 'popup--feature', maxWidth: 360 });
+
+      categories[cat].addLayer(marker);
+      allMarkers.push(marker);
     });
-    layer.addTo(map);
-    try { map.fitBounds(layer.getBounds()); } catch (e) {}
+
+    // Aggiungi tutte le categorie alla mappa (visibili di default)
+    Object.values(categories).forEach(g => g.addTo(map));
+
+    // force Leaflet to recompute sizes / render tiles & markers
+    setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 150);
+
+    // costruisci la sidebar categorie
+    const categoryListEl = document.getElementById('categoryList');
+    if (categoryListEl) {
+      categoryListEl.innerHTML = '';
+      Object.keys(categories).sort().forEach(cat => {
+        const count = categories[cat].getLayers().length;
+        const row = document.createElement('div');
+        row.className = 'category-row';
+        row.innerHTML = `
+          <label>
+            <input type="checkbox" data-cat="${cat}" checked>
+            <span class="category-name">${cat}</span>
+            <span class="category-count">(${count})</span>
+          </label>
+        `;
+        categoryListEl.appendChild(row);
+      });
+
+      // toggle singola categoria
+      categoryListEl.addEventListener('change', (ev) => {
+        const cb = ev.target.closest('input[type="checkbox"]');
+        if (!cb) return;
+        const cat = cb.dataset.cat;
+        const rowEl = cb.closest('.category-row');
+        if (cb.checked) {
+          map.addLayer(categories[cat]);
+          rowEl && rowEl.classList.remove('inactive');
+        } else {
+          map.removeLayer(categories[cat]);
+          rowEl && rowEl.classList.add('inactive');
+        }
+        // re-render map after toggling layers
+        setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 80);
+      });
+    }
+
+    // toggle tutto
+    const toggleAllOn = document.getElementById('toggleAllOn');
+    const toggleAllOff = document.getElementById('toggleAllOff');
+    if (toggleAllOn) toggleAllOn.addEventListener('click', () => {
+      categoryListEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.checked = true;
+        map.addLayer(categories[cb.dataset.cat]);
+        cb.closest('.category-row')?.classList.remove('inactive');
+      });
+      setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 80);
+    });
+    if (toggleAllOff) toggleAllOff.addEventListener('click', () => {
+      categoryListEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+        map.removeLayer(categories[cb.dataset.cat]);
+        cb.closest('.category-row')?.classList.add('inactive');
+      });
+      setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 80);
+    });
+
+    // adatta la vista ai marker caricati
+    try {
+      if (allMarkers.length) {
+        const fg = L.featureGroup(allMarkers);
+        map.fitBounds(fg.getBounds(), { padding: [24, 24] });
+        // dopo fitBounds, forziamo invalidate per sicurezza
+        setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 120);
+      }
+    } catch (e) { /* ignore */ }
   });
 
   // blocco latitudine e longitudine su mappa
@@ -542,90 +631,138 @@ document.addEventListener('DOMContentLoaded', () => {
       const sub = document.createElement('div');
       sub.className = 'bulk-sub';
       const parts = [];
-      if (item.address) parts.push(item.address);
-      if (item.phone) parts.push(`Tel: ${item.phone}`);
-      if (item.category) parts.push(item.category);
-      if (item.lat !== null && item.lng !== null) parts.push(`(${item.lat.toFixed(6)}, ${item.lng.toFixed(6)})`);
+      if (item.address) parts.push(`Indirizzo: ${item.address}`);
+      if (item.phone) parts.push(`Telefono: ${item.phone}`);
+      if (item.category) parts.push(`Categoria: ${item.category}`);
+      if (item.lat !== null && item.lng !== null) {
+        parts.push(`Coordinate: ${item.lat.toFixed(6)}, ${item.lng.toFixed(6)}`);
+      }
       sub.textContent = parts.join(' · ');
 
       left.appendChild(title);
       left.appendChild(sub);
-
-      const right = document.createElement('div');
-      right.style.flex = '0 0 120px';
-      right.style.textAlign = 'right';
-      if (!item.valid) {
-        const bad = document.createElement('div');
-        bad.className = 'bulk-bad';
-        bad.textContent = 'Formato incerto';
-        right.appendChild(bad);
-      } else {
-        const ok = document.createElement('div');
-        ok.style.color = '#2f855a';
-        ok.style.fontWeight = '700';
-        ok.textContent = 'OK';
-        right.appendChild(ok);
-      }
-
       row.appendChild(left);
-      row.appendChild(right);
+
+      const actions = document.createElement('div');
+      actions.className = 'bulk-actions';
+
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn btn--add';
+      addBtn.textContent = 'Aggiungi';
+      addBtn.disabled = !item.valid;
+      addBtn.addEventListener('click', () => {
+        // onClick: crea il marker e popup, poi apre il report modal con i dati
+        const marker = createMarker([item.lng, item.lat], 'user');
+        marker.addTo(map);
+        marker.bindPopup(`
+          <div class="popup-card">
+            <div class="popup-icon" aria-hidden="true">📌</div>
+            <div class="popup-body">
+              <div class="popup-title">Coordinate selezionate</div>
+              <div class="popup-sub">Lat: ${item.lat.toFixed(6)} · Lng: ${item.lng.toFixed(6)}</div>
+              <div class="popup-actions">
+                <button id="copyCoordBtn" class="btn" style="background:#fff;color:var(--primary);box-shadow:none;border:1px solid rgba(2,6,23,0.06)">Copia</button>
+              </div>
+              <div class="popup-meta">Trascina il marker per affinare la posizione.</div>
+            </div>
+          </div>
+        `, { className: 'popup--selected', maxWidth: 380 }).openPopup();
+
+        // apri il modal report con i dati già compilati
+        openReportModal({
+          name: item.name,
+          address: item.address,
+          phone: item.phone,
+          category: item.category,
+          description: '', // vuoto per il bulk
+          lat: item.lat,
+          lng: item.lng
+        });
+
+        // copia coordinate negli appunti (conferma all'utente)
+        setTimeout(() => {
+          navigator.clipboard.writeText(`${item.lat.toFixed(6)}, ${item.lng.toFixed(6)}`)
+            .then(() => showToast('Coordinate copiate negli appunti'))
+            .catch(() => {});
+        }, 100);
+      });
+      actions.appendChild(addBtn);
+
+      row.appendChild(actions);
       bulkPreview.appendChild(row);
     });
-    bulkCount.textContent = `${list.length} righe`;
+
+    // aggiorna conteggio righe nel bulk
+    const count = list.filter(i => i.valid).length;
+    bulkCount.textContent = `${count} ${count === 1 ? 'voce' : 'voci'} pronte per l\'importazione`;
   }
 
-  let parsedBulk = [];
+  // bulk parse handler: reads text input, parses, and shows preview
+  if (bulkParse) {
+    bulkParse.addEventListener('click', () => {
+      const text = bulkInput.value.trim();
+      if (!text) {
+        showToast('Inserisci del testo da analizzare');
+        return;
+      }
 
-  if (bulkParse) bulkParse.addEventListener('click', () => {
-    const text = bulkInput.value || '';
-    parsedBulk = parseBulkText(text);
-    renderBulkPreview(parsedBulk);
-  });
+      // parse e mostra anteprima
+      const parsed = parseBulkText(text);
+      renderBulkPreview(parsed);
+    });
+  }
 
-  if (bulkClear) bulkClear.addEventListener('click', () => {
-    bulkInput.value = '';
-    parsedBulk = [];
-    bulkPreview.innerHTML = '';
-    bulkCount.textContent = '';
-  });
+  // clear button: svuota l'input e l'anteprima
+  if (bulkClear) {
+    bulkClear.addEventListener('click', () => {
+      bulkInput.value = '';
+      bulkPreview.innerHTML = '';
+      bulkCount.textContent = '0 voci pronte per l\'importazione';
+    });
+  }
 
-  if (bulkSubmit) bulkSubmit.addEventListener('click', () => {
-    if (!parsedBulk || parsedBulk.length === 0) {
-      showToast('Nessuna riga da importare. Usa Anteprima prima di inviare.');
-      return;
-    }
+  // submit handler: aggiunge i marker in bulk
+  if (bulkSubmit) {
+    bulkSubmit.addEventListener('click', () => {
+      const rows = Array.from(bulkPreview.querySelectorAll('.bulk-row'));
+      const validItems = rows.map(r => {
+        const item = {
+          name: r.querySelector('.bulk-title').textContent.trim(),
+          address: r.querySelector('.bulk-sub').textContent.trim().replace(/Telefono: .*/, '').trim(),
+          phone: r.querySelector('.bulk-sub').textContent.trim().replace(/.*Telefono: /, '').trim(),
+          category: '', // lascia vuoto per ora
+          lat: null,
+          lng: null,
+          description: ''
+        };
 
-    // Build single issue body with all entries (maintainer-friendly)
-    const entriesText = parsedBulk.map((it, i) => {
-      const lines = [
-        `### ${i+1}. ${it.name || '(senza nome)'}`,
-        it.address ? `**Indirizzo:** ${it.address}` : '',
-        it.phone ? `**Telefono:** ${it.phone}` : '',
-        it.category ? `**Categoria:** ${it.category}` : '',
-        (it.lat !== null && it.lng !== null) ? `**Coordinate:** ${it.lat.toFixed(6)}, ${it.lng.toFixed(6)}` : '',
-        it.description ? `**Descrizione:**\n${it.description}` : ''
-      ].filter(Boolean).join('\n\n');
-      return lines;
-    }).join('\n\n---\n\n');
+        // estrai lat/lng da title se presente
+        const coordsMatch = r.querySelector('.bulk-title').textContent.trim().match(/Lat: ([0-9.-]+) · Lng: ([0-9.-]+)/);
+        if (coordsMatch) {
+          item.lat = parseFloat(coordsMatch[1]);
+          item.lng = parseFloat(coordsMatch[2]);
+        }
 
-    const title = `Import multiplo: ${parsedBulk.length} centri`;
-    const body = [
-      `Segnalo in blocco ${parsedBulk.length} centri importati dall'utente.`,
-      '',
-      'Per favore revisionare e aggiungere singolarmente i punti sulla mappa.',
-      '',
-      'Dettagli:',
-      '',
-      entriesText,
-      '',
-      '_Generato tramite Bulk import nella mappa._'
-    ].join('\n');
+        return item;
+      }).filter(i => i.lat !== null && i.lng !== null); // filtra solo quelli con coordinate valide
 
-    const url = `https://github.com/micolsalomone/mutuo-aiuto-mappa/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
-    window.open(url, '_blank');
-    showToast('Apro la issue con le segnalazioni');
-    openBulk(false);
-  });
+      if (validItems.length === 0) {
+        showToast('Nessuna voce valida da importare');
+        return;
+      }
 
-  // ---- end bulk import handlers ----
+      // aggiungi ogni marker alla mappa
+      validItems.forEach(item => {
+        const marker = createMarker([item.lng, item.lat], 'user');
+        marker.addTo(map);
+      });
+
+      // adatta la vista per mostrare tutti i nuovi marker
+      const fg = L.featureGroup(validItems.map(i => createMarker([i.lng, i.lat], 'user')));
+      map.fitBounds(fg.getBounds(), { padding: [24, 24] });
+
+      // mostra toast di conferma
+      showToast(`Aggiunti ${validItems.length} centri alla mappa`);
+    });
+  }
 });

@@ -48,6 +48,20 @@
     </div>
   </header>
 
+  <!-- Sidebar categorie (sinistra della mappa) -->
+  <aside id="sidebar" class="sidebar" aria-label="Filtri categorie">
+    <div class="sidebar-header">
+      <strong>Categorie</strong>
+    </div>
+
+    <div class="sidebar-controls">
+      <button id="toggleAllOn" class="btn">Mostra tutto</button>
+      <button id="toggleAllOff" class="btn">Nascondi tutto</button>
+    </div>
+
+    <div id="categoryList" class="category-list" aria-live="polite"></div>
+  </aside>
+
   <!-- Helper panel (toggleable) -->
   <div id="helperPanel" class="helper-panel" aria-hidden="true" role="region" aria-label="Aiuto rapido">
     <div class="helper-inner">
