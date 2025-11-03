@@ -64,6 +64,30 @@ document.addEventListener('DOMContentLoaded', () => {
     return L.marker(latlng, Object.assign({ icon }, options));
   }
 
+  // normalizzazione categorie: mappa alias -> categoria canonica
+  const CATEGORY_MAP = {
+    // canonical keys (italian)
+    'casa delle donne / cav': 'Casa delle donne / CAV',
+    'cav e casa delle donne': 'Casa delle donne / CAV',
+    'cav': 'Casa delle donne / CAV',
+    'casa delle donne': 'Casa delle donne / CAV',
+    'sportello immigrazione': 'Sportello immigrazione',
+    'servizi sociali': 'Servizi sociali',
+    'casa famiglia': 'Casa famiglia',
+    'centro sociale / casa del popolo': 'Centro sociale / Casa del popolo',
+    'centro sociale': 'Centro sociale / Casa del popolo',
+    'altro': 'Altro'
+  };
+
+  function normalizeCategory(raw) {
+    if (!raw) return 'Altro';
+    const k = String(raw).trim().toLowerCase();
+    return CATEGORY_MAP[k] || (k.split('/').map(s => s.trim()).join(' / ') || raw);
+  }
+
+  // buffer per nuove feature create dall'utente (bulk / add)
+  const newFeaturesAdded = [];
+
   // funzione per caricare GeoJSON anche se fetch fallisce in locale
   async function loadGeoJSON(url) {
     try {
@@ -95,6 +119,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Caricamento GeoJSON -> creazione markers raggruppati per categoria
   loadGeoJSON('data/centri.geojson').then(geojson => {
+    // ensure features array exists
+    geojson.features = geojson.features || [];
+
+    // Aggiungo manualmente il centro fornito dall'utente
+    geojson.features.push({
+      type: 'Feature',
+      properties: {
+        name: 'Safiya Centro Antiviolenza APS - Centro di promozione sociale e culturale delle donne',
+        indirizzo: 'Via Don Luigi Sturzo, n.c, 70044 Polignano a Mare BA',
+        phone: 'hidden',
+        category: 'Casa delle donne / CAV'
+      },
+      geometry: {
+        type: 'Point',
+        // GeoJSON coordinates: [lng, lat]
+        coordinates: [17.225458510258772, 40.99317352535778]
+      }
+    });
+
     const categories = {};            // name => L.LayerGroup
     const allMarkers = [];            // lista di tutti i marker per bounds
 
@@ -104,7 +147,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!coords || coords.length < 2) return;
 
       const latlng = L.latLng(coords[1], coords[0]);
-      const cat = (p.category || 'Altro').trim() || 'Altro';
+      // normalizza la categoria per evitare duplicazioni
+      const cat = normalizeCategory(p.category || 'Altro');
 
       if (!categories[cat]) {
         categories[cat] = L.layerGroup();
@@ -130,6 +174,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Aggiungi tutte le categorie alla mappa (visibili di default)
     Object.values(categories).forEach(g => g.addTo(map));
+
+    // aggiungi bottone per esportare il geojson unito (se presente sidebar-controls)
+    const sidebarControls = document.querySelector('.sidebar-controls');
+    if (sidebarControls && !document.getElementById('exportBtn')) {
+      const exportBtn = document.createElement('button');
+      exportBtn.id = 'exportBtn';
+      exportBtn.className = 'btn';
+      exportBtn.textContent = 'Esporta GeoJSON';
+      sidebarControls.appendChild(exportBtn);
+      exportBtn.addEventListener('click', async () => {
+        try {
+          await mergeAndDownloadGeoJSON(geojson, newFeaturesAdded);
+          showToast('Preparato file GeoJSON per il download');
+        } catch (e) {
+          console.error(e);
+          showToast('Errore durante la preparazione del file');
+        }
+      });
+    }
 
     // force Leaflet to recompute sizes / render tiles & markers
     setTimeout(() => { try { map.invalidateSize(); } catch(e){} }, 150);
@@ -200,6 +263,69 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (e) { /* ignore */ }
   });
+
+  // Unisce features esistenti e nuove, normalizza, deduplica, ordina e scarica un .geojson
+  async function mergeAndDownloadGeoJSON(baseGeoJson, additions = []) {
+    // carica file originale (se diverso da baseGeoJson)
+    let base = baseGeoJson;
+    if (!base || !base.features) {
+      base = await loadGeoJSON('data/centri.geojson');
+    }
+    base.features = base.features || [];
+
+    // aggiungi additions (assicurati siano in formato Feature)
+    const all = base.features.concat(additions.map(f => f.type === 'Feature' ? f : f));
+
+    // normalizza categorie e crea chiave per dedupe (name + coords rounded)
+    const seen = new Map();
+    const out = [];
+    all.forEach(f => {
+      if (!f || f.type !== 'Feature') return;
+      const props = f.properties || {};
+      const geom = f.geometry || {};
+      if (!geom.coordinates || geom.coordinates.length < 2) return;
+      const lng = parseFloat(geom.coordinates[0]);
+      const lat = parseFloat(geom.coordinates[1]);
+      const name = (props.name || '').trim();
+      const key = `${name.toLowerCase()}|${lat.toFixed(6)}|${lng.toFixed(6)}`;
+      if (seen.has(key)) return; // skip duplicate
+      seen.set(key, true);
+      // normalize category
+      props.category = normalizeCategory(props.category || props.cat || 'Altro');
+      // ensure canonical property names used in project (indirizzo vs address)
+      if (props.address && !props.indirizzo) props.indirizzo = props.address;
+      out.push({
+        type: 'Feature',
+        properties: props,
+        geometry: {
+          type: 'Point',
+          coordinates: [lng, lat]
+        }
+      });
+    });
+
+    // ordina per categoria -> name
+    out.sort((a, b) => {
+      const ca = (a.properties.category || '').toLowerCase();
+      const cb = (b.properties.category || '').toLowerCase();
+      if (ca < cb) return -1;
+      if (ca > cb) return 1;
+      const na = (a.properties.name || '').toLowerCase();
+      const nb = (b.properties.name || '').toLowerCase();
+      return na.localeCompare(nb);
+    });
+
+    const finalGeo = { type: 'FeatureCollection', features: out };
+    const blob = new Blob([JSON.stringify(finalGeo, null, 2)], { type: 'application/geo+json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'centri.merged.geojson';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 
   // blocco latitudine e longitudine su mappa
   const coordsEl = document.getElementById('coords');
@@ -601,24 +727,23 @@ document.addEventListener('DOMContentLoaded', () => {
       const description = rest.length ? rest.join(' ; ') : '';
       const coordsValid = lat && lng && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(lng));
       return {
-        raw: line,
-        idx,
-        name: name || '',
-        address: address || '',
-        phone: phone || '',
-        category: category || '',
+        name: name || null,
+        address: address || null,
+        phone: phone || null,
+        category: category || null,
         lat: coordsValid ? parseFloat(lat) : null,
         lng: coordsValid ? parseFloat(lng) : null,
-        description: description || '',
-        valid: Boolean(name && address && category && (coordsValid || true)) // coords optional but encouraged
+        description: description || null,
+        valid: !!name && !!address && !!category && coordsValid
       };
     });
     return parsed;
   }
 
+  // render helper: mostra anteprima dati nel pannello bulk
   function renderBulkPreview(list) {
-    if (!bulkPreview) return;
     bulkPreview.innerHTML = '';
+
     list.forEach((item, i) => {
       const row = document.createElement('div');
       row.className = 'bulk-row';
