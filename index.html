@@ -11,11 +11,20 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     :root{
+      /* palette e variabili globali (modifica qui per cambiare tutto) */
       --primary:#1976d2;
       --primary-dark:#155fa8;
       --muted:#f8f9fb;
       --accent-grad: linear-gradient(135deg,#1976d2 0%, #4aa3ff 100%);
       --radius:10px;
+
+      /* marker styles (personalizzabili) */
+      --marker-size: 36px;               /* diametro testa pin */
+      --marker-height: 46px;             /* altezza totale pin */
+      --marker-stroke: #ffffff;          /* bordo chiaro */
+      --marker-shadow: rgba(2,6,23,0.12);
+      --marker-default: #2b8cff;         /* colore marker esistenti */
+      --marker-user: #ff6b6b;            /* colore marker utente */
     }
 
     html, body { height:100%; margin:0; font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background: #fcfdff; color:#0b2540; }
@@ -25,29 +34,14 @@
     #map { height: calc(100% - 72px); border-top: 1px solid rgba(2,6,23,0.04); }
     #coords { padding:8px 16px; font-size:0.9rem; color:#556770; background: rgba(255,255,255,0.6); position: absolute; right: 12px; bottom: 12px; border-radius:8px; box-shadow: 0 6px 20px rgba(2,6,23,0.06); backdrop-filter: blur(4px); }
 
-    .btn {
-      -webkit-tap-highlight-color: transparent;
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding:10px 14px;
-      border-radius:999px;
-      background: var(--accent-grad);
-      color: white;
-      text-decoration:none;
-      font-weight:600;
-      box-shadow: 0 6px 18px rgba(25,118,210,0.18);
-      border: 0;
-      cursor: pointer;
-      transition: transform .14s ease, box-shadow .14s ease;
-      user-select: none;
-    }
-    .btn:active { transform: translateY(1px) scale(.998); }
-    .btn:hover { box-shadow: 0 10px 30px rgba(25,118,210,0.22); transform: translateY(-2px); }
-    .btn:focus { outline: 3px solid rgba(25,118,210,0.18); outline-offset: 3px; border-radius:999px; }
-
-    /* small icon style inside button */
-    .btn .icon { font-size:1.05rem; line-height:1; display:inline-block; transform:translateY(-1px); }
+    /* marker CSS (usa .custom-marker e varianti) */
+    .custom-marker { display:block; line-height:0; }
+    .custom-marker svg { display:block; }
+    /* modulare: cambia aspetto modificando solo le classi qui o le variabili su :root */
+    .custom-marker--default svg .pin-fill { fill: var(--marker-default); }
+    .custom-marker--user    svg .pin-fill { fill: var(--marker-user); }
+    .custom-marker svg .pin-stroke { fill: var(--marker-stroke); opacity: 0.98; }
+    .custom-marker svg .pin-shadow { fill: var(--marker-shadow); opacity: 1; }
 
     /* responsive tweaks */
     @media (max-width:600px){
@@ -99,6 +93,64 @@
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
+    // funzione toast globale (ora visibile a tutti i listener)
+    function showToast(msg, ms = 1400) {
+      const t = document.getElementById('toast');
+      if (!t) return;
+      t.textContent = msg;
+      t.style.display = 'block';
+      // forzare reflow prima di cambiare opacity
+      void t.offsetWidth;
+      t.style.opacity = '1';
+      clearTimeout(t._timeout);
+      t._timeout = setTimeout(() => {
+        t.style.opacity = '0';
+        setTimeout(() => t.style.display = 'none', 200);
+      }, ms);
+    }
+
+    /* helper per creare un'icona SVG personalizzata.
+       Modifica variabili CSS sopra per cambiare colori/dimensioni facilmente. */
+    function markerSvgHtml(color) {
+      // dimensioni calcolate in base alla variabile CSS, ma svg usa valori fissi coerenti
+      // pin semplice: testa circolare + coda a goccia + ombra
+      return `
+        <svg width="36" height="46" viewBox="0 0 36 46" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <filter id="s" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="${getComputedStyle(document.documentElement).getPropertyValue('--marker-shadow').trim() || 'rgba(0,0,0,0.12)'}" flood-opacity="0.4"/>
+            </filter>
+          </defs>
+          <!-- ombra -->
+          <ellipse class="pin-shadow" cx="18" cy="36" rx="10" ry="3" fill="${getComputedStyle(document.documentElement).getPropertyValue('--marker-shadow').trim()}" opacity="0.22"/>
+          <!-- corpo pin (goccia) -->
+          <path class="pin-fill" d="M18 2C12.5 2 8 6.5 8 12c0 6.8 8 18 10 22 2-4 10-15.2 10-22 0-5.5-4.5-10-10-10z" fill="${color}"/>
+          <!-- bordo chiaro -->
+          <path class="pin-stroke" d="M18 4.5c-4.3 0-7.8 3.5-7.8 7.8 0 6 6.8 16 7.8 19.5 1-3.5 7.8-13.5 7.8-19.5 0-4.3-3.5-7.8-7.8-7.8z" fill="${getComputedStyle(document.documentElement).getPropertyValue('--marker-stroke').trim() || '#fff'}" opacity="0.12"/>
+          <!-- centro -->
+          <circle cx="18" cy="12" r="4.2" fill="${getComputedStyle(document.documentElement).getPropertyValue('--marker-stroke').trim() || '#fff'}"/>
+        </svg>
+      `;
+    }
+
+    /* factory per creare marker con divIcon.
+       type: 'default' o 'user' (usare questi nomi nelle classi CSS) */
+    function createMarker(latlng, type = 'default', options = {}) {
+      const color = (type === 'user')
+        ? getComputedStyle(document.documentElement).getPropertyValue('--marker-user').trim()
+        : getComputedStyle(document.documentElement).getPropertyValue('--marker-default').trim();
+
+      const icon = L.divIcon({
+        className: `custom-marker custom-marker--${type}`,
+        html: markerSvgHtml(color),
+        iconSize: [36, 46],
+        iconAnchor: [18, 42],  // punta del pin
+        popupAnchor: [0, -40]
+      });
+
+      return L.marker(latlng, Object.assign({ icon }, options));
+    }
+
     // funzione per caricare GeoJSON anche se fetch fallisce in locale
     async function loadGeoJSON(url) {
       try {
@@ -131,6 +183,10 @@
 
     loadGeoJSON('data/centri.geojson').then(geojson => {
       const layer = L.geoJSON(geojson, {
+        pointToLayer: (feature, latlng) => {
+          // usa lo style 'default' per i punti nel file
+          return createMarker(latlng, 'default');
+        },
         onEachFeature: (f, l) => {
           const p = f.properties || {};
           const html = `
@@ -172,8 +228,8 @@
       // rimuovi marker precedente
       if (selectedMarker) map.removeLayer(selectedMarker);
 
-      // aggiungi marker trascinabile
-      selectedMarker = L.marker(selectedLatLng, { draggable: true }).addTo(map);
+      // aggiungi marker trascinabile con stile 'user'
+      selectedMarker = createMarker(selectedLatLng, 'user', { draggable: true }).addTo(map);
 
       // popup con azioni: copia (rimosso "Usa coordinate")
       selectedMarker.bindPopup(`
@@ -192,21 +248,7 @@
         `Latitudine: ${selectedLatLng.lat.toFixed(6)} | Longitudine: ${selectedLatLng.lng.toFixed(6)} (selezionate)`;
 
       // funzione toast semplice
-      function showToast(msg, ms = 1400) {
-        const t = document.getElementById('toast');
-        if (!t) return;
-        t.textContent = msg;
-        t.style.display = 'block';
-        // forzare il reflow prima di cambiare opacity
-        void t.offsetWidth;
-        t.style.opacity = '1';
-        clearTimeout(t._timeout);
-        t._timeout = setTimeout(() => {
-          t.style.opacity = '0';
-          setTimeout(() => t.style.display = 'none', 200);
-        }, ms);
-      }
-
+      // (rimosso showToast locale; si usa la funzione globale)
       // attacca listener al bottone copia (dopo che il DOM è stato inserito nel popup)
       setTimeout(() => {
         const copyBtn = document.getElementById('copyCoordBtn');
@@ -217,9 +259,6 @@
             await navigator.clipboard.writeText(text);
             showToast('Coordinate copiate negli appunti');
           } catch {
-            // fallback: mostra comunque la stringa in un prompt per copiare manualmente
-            // e mostra toast di fallback
-            // prompt non ideale in UX ma garantisce funzionamento su vecchi browser
             try { prompt('Copia le coordinate', text); } catch {}
             showToast('Copia non disponibile automaticamente — copia manuale');
           }
@@ -233,9 +272,8 @@
           `Latitudine: ${selectedLatLng.lat.toFixed(6)} | Longitudine: ${selectedLatLng.lng.toFixed(6)} (selezionate)`;
       });
 
-      // se si chiude il popup ma si vuole cancellare la selezione, teniamo il marker ma lo segnaliamo
       selectedMarker.on('popupclose', () => {
-        // non cancelliamo automaticamente; l'utente può cliccare altrove per una nuova selezione
+        // lascia il marker in mappa; l'utente può cliccare altrove per una nuova selezione
       });
     });
 
