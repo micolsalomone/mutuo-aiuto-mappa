@@ -55,6 +55,25 @@
       .btn { padding:8px 10px; gap:6px; font-size:0.95rem; }
       #coords { font-size:0.85rem; right:8px; bottom:8px; }
     }
+
+    /* toast notifiche */
+    #toast {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 28px;
+      background: rgba(2,6,23,0.92);
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 12px;
+      font-size: 0.93rem;
+      box-shadow: 0 8px 24px rgba(2,6,23,0.18);
+      z-index: 10000;
+      opacity: 0;
+      transition: opacity .18s ease;
+      pointer-events: none;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -66,6 +85,9 @@
   <div id="map"></div>
 
   <div id="coords" style="display:none;"></div>
+
+  <!-- toast per notifiche copia -->
+  <div id="toast" aria-live="polite"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -130,17 +152,97 @@
 
     // blocco latitudine e longitudine su mappa
     const coordsEl = document.getElementById('coords');
+    let selectedMarker = null;
+    let selectedLatLng = null;
+
     map.on('move', () => {
       const c = map.getCenter();
-      coordsEl.style.display = 'block';
-      coordsEl.textContent =
-        `Latitudine: ${c.lat.toFixed(5)} | Longitudine: ${c.lng.toFixed(5)}`;
+      // mostra il centro solo se non ci sono coordinate selezionate
+      if (!selectedLatLng) {
+        coordsEl.style.display = 'block';
+        coordsEl.textContent =
+          `Latitudine: ${c.lat.toFixed(5)} | Longitudine: ${c.lng.toFixed(5)}`;
+      }
     });
 
-    // Pulsante per proporre un nuovo centro
+    // seleziona coordinate cliccando sulla mappa (simile a Google Maps)
+    map.on('click', (e) => {
+      selectedLatLng = e.latlng;
+
+      // rimuovi marker precedente
+      if (selectedMarker) map.removeLayer(selectedMarker);
+
+      // aggiungi marker trascinabile
+      selectedMarker = L.marker(selectedLatLng, { draggable: true }).addTo(map);
+
+      // popup con azioni: copia (rimosso "Usa coordinate")
+      selectedMarker.bindPopup(`
+        <div style="min-width:220px;font-family:inherit;color:inherit">
+          <div style="font-weight:600;margin-bottom:6px">Coordinate selezionate</div>
+          <div style="margin-bottom:8px">Lat: ${selectedLatLng.lat.toFixed(6)}<br>Lng: ${selectedLatLng.lng.toFixed(6)}</div>
+          <div style="display:flex;gap:8px">
+            <button id="copyCoordBtn" class="btn" style="padding:6px 10px;font-size:0.9rem;background:#fff;color:var(--primary);box-shadow:none;border:1px solid rgba(2,6,23,0.06)">Copia</button>
+          </div>
+          <div style="margin-top:8px;font-size:0.82rem;color:#556770">Puoi trascinare il marker per affinare la posizione. Poi incolla le coordinate nel modulo o nella issue.</div>
+        </div>
+      `).openPopup();
+
+      coordsEl.style.display = 'block';
+      coordsEl.textContent =
+        `Latitudine: ${selectedLatLng.lat.toFixed(6)} | Longitudine: ${selectedLatLng.lng.toFixed(6)} (selezionate)`;
+
+      // funzione toast semplice
+      function showToast(msg, ms = 1400) {
+        const t = document.getElementById('toast');
+        if (!t) return;
+        t.textContent = msg;
+        t.style.display = 'block';
+        // forzare il reflow prima di cambiare opacity
+        void t.offsetWidth;
+        t.style.opacity = '1';
+        clearTimeout(t._timeout);
+        t._timeout = setTimeout(() => {
+          t.style.opacity = '0';
+          setTimeout(() => t.style.display = 'none', 200);
+        }, ms);
+      }
+
+      // attacca listener al bottone copia (dopo che il DOM è stato inserito nel popup)
+      setTimeout(() => {
+        const copyBtn = document.getElementById('copyCoordBtn');
+
+        if (copyBtn) copyBtn.addEventListener('click', async () => {
+          const text = `${selectedLatLng.lat.toFixed(6)}, ${selectedLatLng.lng.toFixed(6)}`;
+          try {
+            await navigator.clipboard.writeText(text);
+            showToast('Coordinate copiate negli appunti');
+          } catch {
+            // fallback: mostra comunque la stringa in un prompt per copiare manualmente
+            // e mostra toast di fallback
+            // prompt non ideale in UX ma garantisce funzionamento su vecchi browser
+            try { prompt('Copia le coordinate', text); } catch {}
+            showToast('Copia non disponibile automaticamente — copia manuale');
+          }
+        });
+      }, 0);
+
+      // aggiornamento coordinate mentre si trascina il marker
+      selectedMarker.on('drag', (ev) => {
+        selectedLatLng = ev.latlng;
+        coordsEl.textContent =
+          `Latitudine: ${selectedLatLng.lat.toFixed(6)} | Longitudine: ${selectedLatLng.lng.toFixed(6)} (selezionate)`;
+      });
+
+      // se si chiude il popup ma si vuole cancellare la selezione, teniamo il marker ma lo segnaliamo
+      selectedMarker.on('popupclose', () => {
+        // non cancelliamo automaticamente; l'utente può cliccare altrove per una nuova selezione
+      });
+    });
+
+    // Pulsante per proporre un nuovo centro (usa coordinate selezionate se presenti)
     document.getElementById('addBtn').addEventListener('click', e => {
       e.preventDefault();
-      const c = map.getCenter();
+      const c = selectedLatLng || map.getCenter();
 
       const title = encodeURIComponent('Proposta: nuovo centro di mutuo aiuto');
       const lat = c.lat.toFixed(6);
@@ -166,7 +268,6 @@ _(usa queste coordinate per localizzare il centro sulla mappa)_
 
 _Se non sai come ottenerle, lascia pure i valori precompilati: rappresentano il punto che stai guardando ora al centro della mappa._
 `);
-
       const issueUrl = `https://github.com/micolsalomone/mutuo-aiuto-mappa/issues/new?title=${title}&body=${body}`;
       window.open(issueUrl, '_blank');
     });
